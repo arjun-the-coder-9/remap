@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReMap — Dynamic North Jersey Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--ink:#182230;--muted:#617083;--paper:#f5f7fb;--card:#fff;--line:#dce3ec;--blue:#2563eb;--green:#16a34a;--orange:#ea580c;--purple:#7c3aed}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:#14213d;color:white;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+header h1{margin:0;font-size:24px}header p{margin:3px 0 0;color:#d4deef}
+.pill{background:#243858;border:1px solid #496080;padding:6px 10px;border-radius:99px;font-size:12px}
+main{max-width:1400px;margin:auto;padding:16px;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr);gap:16px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 2px 8px #17203308}
+.panelhead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.panelhead h2{font-size:16px;margin:0}.sub{color:var(--muted);font-size:12px}
+#map{height:570px;background:#eaf0f5}
+.maptools{display:flex;gap:7px;flex-wrap:wrap;padding:10px 12px;border-top:1px solid var(--line)}
+button,select{font:inherit;border:1px solid #cbd5e1;background:white;border-radius:8px;padding:8px 10px;cursor:pointer;color:var(--ink)}
+button:hover{background:#f0f5ff;border-color:#93b4ff}button.primary{background:var(--blue);border-color:var(--blue);color:white}button.primary:hover{background:#1d4ed8}button.active{outline:2px solid #93c5fd;background:#eff6ff}
+button:disabled{opacity:.4;cursor:not-allowed}
+.side{display:flex;flex-direction:column;gap:16px}.content{padding:14px 16px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.metric{border:1px solid var(--line);border-radius:10px;padding:12px}.metric .label{font-size:12px;color:var(--muted)}.metric .value{font-size:23px;font-weight:750;margin-top:2px}.metric .delta{font-size:12px;margin-top:2px}
+.towntitle{display:flex;justify-content:space-between;gap:8px;align-items:start}.towntitle h3{margin:0 0 2px;font-size:19px}
+.statslist{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.stat{background:#f6f8fb;padding:9px;border-radius:8px}.stat b{display:block;font-size:16px}.stat span{font-size:12px;color:var(--muted)}
+label{display:block;font-size:13px;margin:11px 0 5px;font-weight:650}.investment{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin:9px 0}.investment small{display:block;color:var(--muted);font-weight:400}
+select{width:100%}.budgetline{display:flex;justify-content:space-between;margin:8px 0;font-size:13px}.bar{height:9px;background:#e8edf5;border-radius:99px;overflow:hidden}.bar>div{height:100%;background:var(--blue);width:0%;transition:width .25s}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:0 14px 10px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+.note{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:10px 12px;font-size:12px;color:#7c2d12}
+.log{font-size:13px;color:var(--muted);margin:0;padding-left:18px}.log li{margin:5px 0}
+footer{max-width:1400px;margin:0 auto;padding:0 16px 22px;color:var(--muted);font-size:12px}
+@media(max-width:900px){main{grid-template-columns:1fr}#map{height:480px}}@media(max-width:520px){main{padding:8px;gap:9px}.metrics{grid-template-columns:1fr 1fr}#map{height:430px}header{padding:14px}}
+</style>
+</head>
+<body>
+<header><div><h1>ReMap <span style="color:#93c5fd">/</span> North Jersey Lab</h1><p>Explore how regional planning choices could change access and opportunity.</p></div><span class="pill">INTERACTIVE PROTOTYPE · v2</span></header>
+<main>
+<section class="panel">
+ <div class="panelhead"><div><h2>Regional planning map</h2><div class="sub">Click a town marker to inspect it. Use boundary mode to assign selected towns to a region.</div></div><button id="boundaryMode" onclick="toggleBoundary()">Edit regions</button></div>
+ <div id="map" role="application" aria-label="Interactive North Jersey map"></div>
+ <div class="maptools">
+  <button id="selectBtn" onclick="toggleSelectMode()">Select towns</button>
+  <button onclick="assignRegion('A')">Assign to Region A</button><button onclick="assignRegion('B')">Assign to Region B</button><button onclick="assignRegion('C')">Assign to Region C</button>
+  <button onclick="resetRegions()">Reset regions</button>
+ </div>
+ <div class="legend"><span><i class="dot" style="background:#2563eb"></i>Region A</span><span><i class="dot" style="background:#16a34a"></i>Region B</span><span><i class="dot" style="background:#9333ea"></i>Region C</span><span><i class="dot" style="background:#ea580c"></i>Selected town</span></div>
+</section>
+<div class="side">
+ <section class="panel">
+  <div class="panelhead"><h2>Live scenario dashboard</h2><span class="sub" id="scenarioStatus">Baseline</span></div>
+  <div class="content"><div class="metrics">
+   <div class="metric"><div class="label">Estimated avg. commute</div><div class="value" id="commute">31 min</div><div class="delta" id="commuteDelta">Baseline estimate</div></div>
+   <div class="metric"><div class="label">Jobs accessible (index)</div><div class="value" id="jobs">62 / 100</div><div class="delta" id="jobsDelta">Baseline index</div></div>
+   <div class="metric"><div class="label">Regional coordination</div><div class="value" id="coord">3 regions</div><div class="delta">Based on current assignments</div></div>
+   <div class="metric"><div class="label">Budget remaining</div><div class="value" id="remaining">$500M</div><div class="delta" id="spentLabel">$0M invested</div></div>
+  </div><div style="margin-top:14px"><div class="budgetline"><span>Budget used</span><b id="budgetText">0%</b></div><div class="bar"><div id="budgetBar"></div></div></div>
+  <div class="note" style="margin-top:14px">Simulation numbers are illustrative placeholders—not official forecasts. Changing a boundary alone does not shorten anyone’s commute; investments are what change the prototype’s estimates.</div>
+  </div>
+ </section>
+ <section class="panel">
+  <div class="panelhead"><h2 id="townHeading">Town details</h2><span class="sub" id="regionTag">Region A</span></div>
+  <div class="content">
+   <div class="towntitle"><div><h3 id="townName">Fair Lawn</h3><div class="sub" id="townDesc">Click any town marker on the map.</div></div></div>
+   <div class="statslist"><div class="stat"><b id="population">34,000</b><span>Population (approx.)</span></div><div class="stat"><b id="townJobs">8,500</b><span>Jobs index units*</span></div><div class="stat"><b id="access">Medium</b><span>Transit access (demo)</span></div><div class="stat"><b id="investmentTotal">$0M</b><span>Investment in town</span></div></div>
+   <label for="regionSelect">Proposed region</label><select id="regionSelect" onchange="changeTownRegion(this.value)"><option value="A">Region A — Blue</option><option value="B">Region B — Green</option><option value="C">Region C — Purple</option></select>
+   <div class="sub" style="margin-top:6px">Change the town's region here, or select multiple towns on the map and assign them together.</div>
+  </div>
+ </section>
+ <section class="panel">
+  <div class="panelhead"><h2>Invest in selected town</h2><span class="sub">Budget: $500M</span></div>
+  <div class="content">
+   <div class="investment"><div><b>Train station upgrade</b><small>Improves rail access · $80M</small></div><button onclick="invest('rail',80)">+ Add</button></div>
+   <div class="investment"><div><b>Express bus service</b><small>Improves transit coverage · $25M</small></div><button onclick="invest('bus',25)">+ Add</button></div>
+   <div class="investment"><div><b>Jobs and mixed-use hub</b><small>Brings opportunities closer · $60M</small></div><button onclick="invest('jobs',60)">+ Add</button></div>
+   <div class="investment"><div><b>Safe walking / cycling links</b><small>Better local connections · $15M</small></div><button onclick="invest('active',15)">+ Add</button></div>
+   <button class="primary" style="width:100%;margin-top:8px" onclick="runSimulation()">Run simulation</button>
+   <button style="width:100%;margin-top:7px" onclick="resetAll()">Reset entire scenario</button>
+  </div>
+ </section>
+ <section class="panel"><div class="panelhead"><h2>Recent changes</h2></div><div class="content"><ul class="log" id="log"><li>Prototype loaded with demo town data.</li><li>Choose a town and add a planning investment.</li></ul></div></section>
+</div>
+</main>
+<footer>*Town job counts and all impact calculations in this starter are demonstration values. The map uses real town-center locations but the colored regions are proposed planning zones around those points—not official municipal boundary polygons. Requires an internet connection to load Leaflet and OpenStreetMap tiles.</footer>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const towns=[
+{name:"Fair Lawn",lat:40.9404,lng:-74.1318,pop:34500,jobs:8.5,region:"A",access:2},
+{name:"Ridgewood",lat:40.9793,lng:-74.1165,pop:25300,jobs:7.2,region:"A",access:2},
+{name:"Paramus",lat:40.9445,lng:-74.0754,pop:26500,jobs:23.0,region:"A",access:1},
+{name:"Hackensack",lat:40.8859,lng:-74.0435,pop:46000,jobs:28.0,region:"B",access:3},
+{name:"Teaneck",lat:40.8976,lng:-74.0151,pop:41100,jobs:10.5,region:"B",access:2},
+{name:"Englewood",lat:40.8929,lng:-73.9726,pop:29000,jobs:12.0,region:"B",access:2},
+{name:"Fort Lee",lat:40.8509,lng:-73.9701,pop:40500,jobs:19.0,region:"C",access:3},
+{name:"Clifton",lat:40.8584,lng:-74.1638,pop:90000,jobs:18.0,region:"A",access:2},
+{name:"Paterson",lat:40.9168,lng:-74.1718,pop:157000,jobs:24.0,region:"A",access:3},
+{name:"Newark",lat:40.7357,lng:-74.1724,pop:311000,jobs:70.0,region:"C",access:3}
+];
+const colors={A:"#2563eb",B:"#16a34a",C:"#9333ea"};
+const costs={rail:80,bus:25,jobs:60,active:15};
+let selected="Fair Lawn", selectedSet=new Set(), selectMode=false,boundaryMode=false,spent=0,investments={},map,markers={},polygons=[],simulationRun=false;
+towns.forEach(t=>investments[t.name]={rail:0,bus:0,jobs:0,active:0});
+map=L.map('map').setView([40.88,-74.09],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+function regionTownCount(){return ["A","B","C"].filter(r=>towns.some(t=>t.region===r)).length}
+function markerStyle(t){return {radius:selectedSet.has(t.name)?10:(selected===t.name?9:7),color:selectedSet.has(t.name)?"#ea580c":"white",weight:2,fillColor:colors[t.region],fillOpacity:.95}}
+towns.forEach(t=>{let m=L.circleMarker([t.lat,t.lng],markerStyle(t)).addTo(map).bindTooltip(t.name);m.on('click',()=>{if(selectMode){selectedSet.has(t.name)?selectedSet.delete(t.name):selectedSet.add(t.name);selected=t.name;refreshAll()}else{selected=t.name;selectedSet.clear();refreshAll()}});markers[t.name]=m});
+function hull(points){if(points.length<3)return points;points=[...points].sort((a,b)=>a.lng-b.lng||a.lat-b.lat);const cross=(o,a,b)=>(a.lng-o.lng)*(b.lat-o.lat)-(a.lat-o.lat)*(b.lng-o.lng);let lo=[],hi=[];for(const p of points){while(lo.length>=2&&cross(lo[lo.length-2],lo[lo.length-1],p)<=0)lo.pop();lo.push(p)}for(let i=points.length-1;i>=0;i--){const p=points[i];while(hi.length>=2&&cross(hi[hi.length-2],hi[hi.length-1],p)<=0)hi.pop();hi.push(p)}lo.pop();hi.pop();return lo.concat(hi)}
+function drawRegions(){polygons.forEach(p=>map.removeLayer(p));polygons=[];["A","B","C"].forEach(r=>{const group=towns.filter(t=>t.region===r);if(group.length>=3){const h=hull(group);const p=L.polygon(h.map(t=>[t.lat,t.lng]),{color:colors[r],weight:2,fillColor:colors[r],fillOpacity:.12,dashArray:"6 5"}).addTo(map).bindTooltip("Proposed Region "+r);polygons.push(p)}else if(group.length===2){const p=L.polyline(group.map(t=>[t.lat,t.lng]),{color:colors[r],weight:3,dashArray:"5 6"}).addTo(map);polygons.push(p)}})}
+function currentTown(){return towns.find(t=>t.name===selected)||towns[0]}
+function totalFor(t){return Object.values(investments[t.name]).reduce((a,b)=>a+b,0)}
+function updateTown(){const t=currentTown(),iv=investments[t.name];document.getElementById('townName').textContent=t.name;document.getElementById('townDesc').textContent="Town center · "+t.lat.toFixed(3)+", "+t.lng.toFixed(3);document.getElementById('population').textContent=t.pop.toLocaleString();document.getElementById('townJobs').textContent=t.jobs.toFixed(1)+"k";document.getElementById('access').textContent=["Low","Limited","Medium","High"][Math.min(3,t.access+((iv.rail+iv.bus)>0?1:0))];document.getElementById('investmentTotal').textContent="$"+totalFor(t)+"M";document.getElementById('regionTag').textContent="Region "+t.region;document.getElementById('regionSelect').value=t.region}
+function updateDashboard(){const rail=towns.reduce((s,t)=>s+investments[t.name].rail,0),bus=towns.reduce((s,t)=>s+investments[t.name].bus,0),job=towns.reduce((s,t)=>s+investments[t.name].jobs,0),active=towns.reduce((s,t)=>s+investments[t.name].active,0);const improvement=rail*.035+bus*.045+job*.025+active*.02;const commute=Math.max(18,31-improvement);const access=Math.min(95,62+rail*.07+bus*.16+job*.04+active*.1);document.getElementById('commute').textContent=(simulationRun?commute:31).toFixed(1)+" min";document.getElementById('jobs').textContent=Math.round(simulationRun?access:62)+" / 100";document.getElementById('commuteDelta').textContent=simulationRun?(commute-31).toFixed(1)+" min vs. baseline":"Baseline estimate";document.getElementById('jobsDelta').textContent=simulationRun?"+"+Math.round(access-62)+" points vs. baseline":"Baseline index";document.getElementById('coord').textContent=regionTownCount()+" regions";document.getElementById('remaining')="$"+(500-spent)+"M";document.getElementById('spentLabel')="$"+spent+"M invested";document.getElementById('budgetText')=undefined;document.getElementById('budgetText').textContent=Math.round(spent/500*100)+"%";document.getElementById('budgetBar').style.width=(spent/500*100)+"%";document.getElementById('scenarioStatus').textContent=simulationRun?"Updated estimate":"Baseline"}
+function refreshAll(){towns.forEach(t=>markers[t.name].setStyle(markerStyle(t)));drawRegions();updateTown();updateDashboard()}
+function addLog(s){const ul=document.getElementById('log'),li=document.createElement('li');li.textContent=s;ul.prepend(li);while(ul.children.length>6)ul.lastChild.remove()}
+function toggleSelectMode(){selectMode=!selectMode;document.getElementById('selectBtn').classList.toggle('active',selectMode);document.getElementById('selectBtn').textContent=selectMode?"Selecting towns…":"Select towns";if(!selectMode&&selectedSet.size===0)selectedSet.add(selected);refreshAll()}
+function toggleBoundary(){boundaryMode=!boundaryMode;document.getElementById('boundaryMode').classList.toggle('active',boundaryMode);document.getElementById('boundaryMode').textContent=boundaryMode?"Finish editing":"Edit regions";if(boundaryMode){selectMode=true;document.getElementById('selectBtn').classList.add('active');document.getElementById('selectBtn').textContent="Selecting towns…"}else{selectMode=false;document.getElementById('selectBtn').classList.remove('active');document.getElementById('selectBtn').textContent="Select towns"}}
+function assignRegion(r){let targets=selectedSet.size?[...selectedSet]:[selected];targets.forEach(n=>{const t=towns.find(x=>x.name===n);if(t)t.region=r});selected=targets[targets.length-1];simulationRun=false;addLog(targets.length+" town(s) assigned to Region "+r+".");refreshAll()}
+function changeTownRegion(r){currentTown().region=r;simulationRun=false;addLog(selected+" assigned to Region "+r+".");refreshAll()}
+function invest(type,cost){if(spent+cost>500){alert("Not enough budget. Reset the scenario or choose a lower-cost investment.");return}const t=currentTown();investments[t.name][type]++;spent+=cost;simulationRun=false;addLog(costs[type]+"M invested in "+({rail:"train station upgrade",bus:"express bus service",jobs:"jobs hub",active:"walking/cycling links"}[type])+" for "+t.name+".");refreshAll()}
+function runSimulation(){simulationRun=true;refreshAll();addLog("Simulation updated. Estimates reflect demo assumptions, not measured forecasts.");}
+function resetRegions(){towns.forEach((t,i)=>t.region=i<4?"A":i<7?"B":"C");selectedSet.clear();simulationRun=false;addLog("Region assignments reset.");refreshAll()}
+function resetAll(){spent=0;simulationRun=false;towns.forEach((t,i)=>{t.region=i<4?"A":i<7?"B":"C";investments[t.name]={rail:0,bus:0,jobs:0,active:0}});selected="Fair Lawn";selectedSet.clear();addLog("Entire scenario reset.");refreshAll()}
+refreshAll();
+</script>
+</body></html>
